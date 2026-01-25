@@ -164,17 +164,10 @@ class AdModel:
     @staticmethod
     async def get_user_ads(user_tg_id: int, active_only: bool = True) -> List[Dict[str, Any]]:
         query = """
-                SELECT id, \
-                       category, \
-                       title, \
-                       description, \
-                       price, \
-                       photo_file_id,
-                       views, \
-                       is_active, \
-                       created_at
+                SELECT id, category, title, description, price, photo_file_id,
+                       views, is_active, created_at
                 FROM ads
-                WHERE user_tg_id = ? \
+                WHERE user_tg_id = ?
                 """
         params = [user_tg_id]
 
@@ -208,19 +201,10 @@ class AdModel:
                           max_distance_km: int = 100) -> Optional[Dict[str, Any]]:
         """Получить следующее объявление с учётом геолокации"""
         async with aiosqlite.connect(DB_PATH) as db:
-            # Если есть координаты пользователя, сортируем по близости
             if user_lat and user_lon:
                 query = """
-                        SELECT id, \
-                               user_tg_id, \
-                               title, \
-                               description, \
-                               price, \
-                               photo_file_id,
-                               latitude, \
-                               longitude, \
-                               location_name, \
-                               created_at,
+                        SELECT id, user_tg_id, title, description, price, photo_file_id,
+                               latitude, longitude, location_name, created_at,
                                (6371 * acos(cos(radians(?)) * cos(radians(latitude)) *
                                             cos(radians(longitude) - radians(?)) + sin(radians(?)) *
                                                                                    sin(radians(latitude)))) AS distance
@@ -228,31 +212,23 @@ class AdModel:
                         WHERE is_active = 1
                           AND category = ?
                           AND user_tg_id != ?
-                      AND id > ?
+                          AND id > ?
                         HAVING distance <= ? OR latitude IS NULL
                         ORDER BY distance ASC, id ASC
-                            LIMIT 1 \
+                        LIMIT 1
                         """
                 params = (user_lat, user_lon, user_lat, category, viewer_tg_id, last_ad_id, max_distance_km)
             else:
                 query = """
-                        SELECT id, \
-                               user_tg_id, \
-                               title, \
-                               description, \
-                               price, \
-                               photo_file_id,
-                               latitude, \
-                               longitude, \
-                               location_name, \
-                               created_at
+                        SELECT id, user_tg_id, title, description, price, photo_file_id,
+                               latitude, longitude, location_name, created_at
                         FROM ads
                         WHERE is_active = 1
                           AND category = ?
                           AND user_tg_id != ?
-                      AND id > ?
+                          AND id > ?
                         ORDER BY id ASC
-                            LIMIT 1 \
+                        LIMIT 1
                         """
                 params = (category, viewer_tg_id, last_ad_id)
 
@@ -276,7 +252,6 @@ class AdModel:
                     result["distance"] = row[10]
                 return result
 
-            # Если не нашли, начинаем с начала (кольцевой просмотр)
             if last_ad_id > 0:
                 return await AdModel.get_next_ad(category, viewer_tg_id, 0, user_lat, user_lon, max_distance_km)
 
@@ -423,7 +398,6 @@ class RatingModel:
                                  """, (from_user_id, to_user_id, rating, comment, swap_id))
                 await db.commit()
 
-                # Обновляем средний рейтинг пользователя
                 await RatingModel.update_user_rating(to_user_id)
                 return True
             except aiosqlite.IntegrityError:
@@ -454,3 +428,71 @@ class RatingModel:
             )
             avg_rating, count = await cursor.fetchone()
             return (avg_rating or DEFAULT_RATING, count or 0)
+
+
+class FavoriteModel:
+    """Модель для работы с избранным"""
+
+    @staticmethod
+    async def add(user_id: int, ad_id: int) -> bool:
+        """Добавить объявление в избранное"""
+        async with aiosqlite.connect(DB_PATH) as db:
+            try:
+                await db.execute(
+                    "INSERT INTO favorites (user_id, ad_id) VALUES (?, ?)",
+                    (user_id, ad_id)
+                )
+                await db.commit()
+                return True
+            except aiosqlite.IntegrityError:
+                return False
+
+    @staticmethod
+    async def remove(user_id: int, ad_id: int) -> bool:
+        """Удалить из избранного"""
+        async with aiosqlite.connect(DB_PATH) as db:
+            cursor = await db.execute(
+                "DELETE FROM favorites WHERE user_id = ? AND ad_id = ?",
+                (user_id, ad_id)
+            )
+            await db.commit()
+            return cursor.rowcount > 0
+
+    @staticmethod
+    async def get_all(user_id: int) -> List[Dict[str, Any]]:
+        """Получить все избранные объявления"""
+        async with aiosqlite.connect(DB_PATH) as db:
+            cursor = await db.execute("""
+                SELECT a.id, a.title, a.description, a.price, a.photo_file_id,
+                       a.category, a.created_at
+                FROM favorites f
+                JOIN ads a ON f.ad_id = a.id
+                WHERE f.user_id = ?
+                  AND a.is_active = 1
+                ORDER BY f.added_at DESC
+            """, (user_id,))
+            
+            rows = await cursor.fetchall()
+            
+            return [
+                {
+                    "id": row[0],
+                    "title": row[1],
+                    "description": row[2],
+                    "price": row[3],
+                    "photo_file_id": row[4],
+                    "category": row[5],
+                    "created_at": row[6]
+                }
+                for row in rows
+            ]
+
+    @staticmethod
+    async def is_favorite(user_id: int, ad_id: int) -> bool:
+        """Проверить, в избранном ли объявление"""
+        async with aiosqlite.connect(DB_PATH) as db:
+            cursor = await db.execute(
+                "SELECT 1 FROM favorites WHERE user_id = ? AND ad_id = ?",
+                (user_id, ad_id)
+            )
+            return await cursor.fetchone() is not None

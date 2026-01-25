@@ -4,10 +4,12 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 
 from database.models import AdModel, UserModel
-from keyboards.main_menu import (get_categories_kb, get_skip_kb, get_main_menu,
-                                 get_location_request_kb, get_confirmation_kb)
+from keyboards.main_menu import (
+    get_categories_inline, get_create_menu, get_main_menu,
+    get_location_request_kb, get_confirmation_kb, get_create_back_only
+)
 from states.user_states import CreateAdStates
-from config.constants import TEXT_TO_CATEGORY, CATEGORIES, MESSAGES
+from config.constants import CATEGORIES, MESSAGES
 from utils.validators import validate_title, validate_description, validate_price
 from utils.formatters import format_ad_text
 
@@ -21,36 +23,56 @@ async def start_create_ad(message: Message, state: FSMContext):
     await state.set_state(CreateAdStates.choosing_category)
 
     await message.answer(
-        "📂 <b>Создание объявления</b>\n\nВыберите категорию товара:",
-        reply_markup=get_categories_kb()
+        "📂 <b>Создание объявления</b>\n\n"
+        "Выберите категорию товара:"
+    )
+    
+    await message.answer(
+        "Выберите категорию цифрой (1-5):",
+        reply_markup=get_categories_inline()
     )
 
 
-@router.message(CreateAdStates.choosing_category, F.text == "◀️ Назад")
-async def cancel_category(message: Message, state: FSMContext):
+@router.callback_query(CreateAdStates.choosing_category, F.data == "cancel")
+async def cancel_category_inline(callback: CallbackQuery, state: FSMContext):
     """Отмена выбора категории"""
     await state.clear()
-    await message.answer("Создание объявления отменено", reply_markup=get_main_menu())
+    await callback.message.delete()
+    await callback.message.answer("Создание объявления отменено", reply_markup=get_main_menu())
+    await callback.answer()
 
 
-@router.message(CreateAdStates.choosing_category)
-async def process_category(message: Message, state: FSMContext):
-    """Обработка выбора категории"""
-    category_key = TEXT_TO_CATEGORY.get(message.text)
+@router.callback_query(CreateAdStates.choosing_category, F.data.startswith("cat:"))
+async def process_category_inline(callback: CallbackQuery, state: FSMContext):
+    """Обработка выбора категории через inline"""
+    category_key = callback.data.split(":")[1]
 
-    if not category_key:
-        await message.answer("❌ Пожалуйста, выберите категорию из списка:")
+    if category_key not in CATEGORIES:
+        await callback.answer("❌ Неверная категория", show_alert=True)
         return
 
     await state.update_data(category=category_key)
     await state.set_state(CreateAdStates.waiting_for_title)
 
-    from aiogram.types import ReplyKeyboardRemove
+    await callback.message.delete()
+    await callback.message.answer(
+        f"✅ Категория: {CATEGORIES[category_key]['emoji']} <b>{CATEGORIES[category_key]['title']}</b>"
+    )
+    
+    await callback.message.answer(
+        "📝 Введите <b>название</b> товара (до 150 символов):",
+        reply_markup=get_create_back_only()
+    )
+    await callback.answer()
 
+
+@router.message(CreateAdStates.waiting_for_title, F.text == "◀️ Назад")
+async def back_from_title(message: Message, state: FSMContext):
+    """Назад к выбору категории"""
+    await state.set_state(CreateAdStates.choosing_category)
     await message.answer(
-        f"Отлично! Категория: {CATEGORIES[category_key]['emoji']} <b>{CATEGORIES[category_key]['title']}</b>\n\n"
-        f"Теперь введите <b>название</b> товара (до 150 символов):",
-        reply_markup=ReplyKeyboardRemove()
+        "📂 Выберите категорию:",
+        reply_markup=get_categories_inline()
     )
 
 
@@ -66,9 +88,20 @@ async def process_title(message: Message, state: FSMContext):
     await state.update_data(title=title)
     await state.set_state(CreateAdStates.waiting_for_description)
 
+    await message.answer("✅ Название сохранено!")
     await message.answer(
-        "✅ Название сохранено!\n\n"
-        "Теперь введите <b>описание</b> товара (до 500 символов):"
+        "📝 Введите <b>описание</b> товара (до 500 символов):",
+        reply_markup=get_create_back_only()
+    )
+
+
+@router.message(CreateAdStates.waiting_for_description, F.text == "◀️ Назад")
+async def back_from_description(message: Message, state: FSMContext):
+    """Назад к названию"""
+    await state.set_state(CreateAdStates.waiting_for_title)
+    await message.answer(
+        "📝 Введите <b>название</b> товара (до 150 символов):",
+        reply_markup=get_create_back_only()
     )
 
 
@@ -86,21 +119,23 @@ async def process_description(message: Message, state: FSMContext):
     data = await state.get_data()
     category = data['category']
 
+    await message.answer("✅ Описание сохранено!")
+
     # Если категория требует цену
     if CATEGORIES[category]['requires_price']:
         await state.set_state(CreateAdStates.waiting_for_price)
         await message.answer(
-            "✅ Описание сохранено!\n\n"
-            "Укажите <b>примерную стоимость</b> товара в рублях (или '0' для бесплатного обмена):",
-            reply_markup=get_skip_kb()
+            "💰 Укажите <b>примерную стоимость</b> товара в рублях:\n\n"
+            "Или нажмите <b>Пропустить</b> для бесплатного обмена",
+            reply_markup=get_create_menu()
         )
     else:
         # Категория "Отдам даром" - цена не нужна
         await state.update_data(price=None)
         await state.set_state(CreateAdStates.waiting_for_photo)
         await message.answer(
-            "✅ Описание сохранено!\n\n"
-            "Пришлите <b>фото</b> товара:"
+            "📸 Пришлите <b>фото</b> товара:",
+            reply_markup=get_create_back_only()
         )
 
 
@@ -110,28 +145,33 @@ async def skip_price(message: Message, state: FSMContext):
     await state.update_data(price=None)
     await state.set_state(CreateAdStates.waiting_for_photo)
 
+    await message.answer("✅ Цена не указана (бесплатный обмен)")
     await message.answer(
-        "Хорошо, цена не указана (бесплатный обмен)\n\n"
-        "Пришлите <b>фото</b> товара:"
+        "📸 Пришлите <b>фото</b> товара:",
+        reply_markup=get_create_back_only()
+    )
+
+
+@router.message(CreateAdStates.waiting_for_price, F.text == "◀️ Назад")
+async def back_from_price(message: Message, state: FSMContext):
+    """Назад к описанию"""
+    await state.set_state(CreateAdStates.waiting_for_description)
+    await message.answer(
+        "📝 Введите <b>описание</b> товара (до 500 символов):",
+        reply_markup=get_create_back_only()
     )
 
 
 @router.message(CreateAdStates.waiting_for_price)
 async def process_price(message: Message, state: FSMContext):
     """Обработка цены"""
-    if message.text == "❌ Отменить":
-        await state.clear()
-        await message.answer("Создание объявления отменено", reply_markup=get_main_menu())
-        return
-
     price = validate_price(message.text)
     if message.text and message.text.strip() == "0":
         price = None
 
     if price is None and (not message.text or message.text.strip() != "0"):
         await message.answer(
-            "❌ Неверный формат. Введите число (рубли) или 0 для бесплатного обмена:",
-            reply_markup=get_skip_kb(),
+            "❌ Неверный формат. Введите число в рублях или нажмите <b>Пропустить</b>"
         )
         return
 
@@ -139,13 +179,31 @@ async def process_price(message: Message, state: FSMContext):
     await state.set_state(CreateAdStates.waiting_for_photo)
 
     price_text = f"{price} ₽" if price else "бесплатный обмен"
-
-    from aiogram.types import ReplyKeyboardRemove
-
+    await message.answer(f"✅ Цена: {price_text}")
     await message.answer(
-        f"✅ Цена: {price_text}\n\nПришлите <b>фото</b> товара:",
-        reply_markup=ReplyKeyboardRemove(),
+        "📸 Пришлите <b>фото</b> товара:",
+        reply_markup=get_create_back_only()
     )
+
+
+@router.message(CreateAdStates.waiting_for_photo, F.text == "◀️ Назад")
+async def back_from_photo(message: Message, state: FSMContext):
+    """Назад к цене"""
+    data = await state.get_data()
+    category = data['category']
+    
+    if CATEGORIES[category]['requires_price']:
+        await state.set_state(CreateAdStates.waiting_for_price)
+        await message.answer(
+            "💰 Укажите <b>примерную стоимость</b> товара в рублях:",
+            reply_markup=get_create_menu()
+        )
+    else:
+        await state.set_state(CreateAdStates.waiting_for_description)
+        await message.answer(
+            "📝 Введите <b>описание</b> товара:",
+            reply_markup=get_create_back_only()
+        )
 
 
 @router.message(CreateAdStates.waiting_for_photo, F.photo)
@@ -154,8 +212,14 @@ async def process_photo(message: Message, state: FSMContext):
     photo_id = message.photo[-1].file_id
     await state.update_data(photo_file_id=photo_id)
 
+    await message.answer("✅ Фото сохранено!")
+
     # Спрашиваем про местоположение
-    user = await UserModel.get_profile(message.from_user.id)
+    try:
+        user = await UserModel.get_profile(message.from_user.id)
+    except Exception as e:
+        print(f"Ошибка get_profile: {e}")
+        user = None
 
     if user and user.get("latitude"):
         await state.update_data(
@@ -169,8 +233,8 @@ async def process_photo(message: Message, state: FSMContext):
         # Просим указать местоположение
         await state.set_state(CreateAdStates.waiting_for_location)
         await message.answer(
-            "✅ Фото сохранено!\n\n"
-            "📍 Укажите местоположение товара (или пропустите):",
+            "📍 Укажите <b>местоположение</b> товара:\n\n"
+            "Или нажмите <b>Пропустить</b> чтобы использовать ваше текущее местоположение",
             reply_markup=get_location_request_kb()
         )
 
@@ -179,6 +243,16 @@ async def process_photo(message: Message, state: FSMContext):
 async def process_no_photo(message: Message, state: FSMContext):
     """Если не прислали фото"""
     await message.answer("❌ Пожалуйста, пришлите фото товара:")
+
+
+@router.message(CreateAdStates.waiting_for_location, F.text == "◀️ Назад")
+async def back_from_location(message: Message, state: FSMContext):
+    """Назад к фото"""
+    await state.set_state(CreateAdStates.waiting_for_photo)
+    await message.answer(
+        "📸 Пришлите <b>фото</b> товара:",
+        reply_markup=get_create_back_only()
+    )
 
 
 @router.message(CreateAdStates.waiting_for_location, F.location)
@@ -190,6 +264,7 @@ async def process_ad_location(message: Message, state: FSMContext):
         location_name=f"Координаты: {message.location.latitude:.4f}, {message.location.longitude:.4f}"
     )
 
+    await message.answer("✅ Местоположение сохранено!")
     await state.set_state(CreateAdStates.confirmation)
     await show_confirmation(message, state)
 
@@ -198,14 +273,17 @@ async def process_ad_location(message: Message, state: FSMContext):
 async def skip_ad_location(message: Message, state: FSMContext):
     """Пропуск местоположения"""
     # Используем местоположение пользователя
-    user = await UserModel.get_profile(message.from_user.id)
+    try:
+        user = await UserModel.get_profile(message.from_user.id)
 
-    if user['latitude']:
-        await state.update_data(
-            latitude=user['latitude'],
-            longitude=user['longitude'],
-            location_name=user['location_name']
-        )
+        if user and user.get('latitude'):
+            await state.update_data(
+                latitude=user['latitude'],
+                longitude=user['longitude'],
+                location_name=user.get('location_name')
+            )
+    except Exception as e:
+        print(f"Ошибка get_profile: {e}")
 
     await state.set_state(CreateAdStates.confirmation)
     await show_confirmation(message, state)
@@ -244,17 +322,24 @@ async def confirm_ad_creation(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
 
     # Создаём объявление
-    ad_id = await AdModel.create(
-        user_tg_id=callback.from_user.id,
-        category=data['category'],
-        title=data['title'],
-        description=data['description'],
-        price=data.get('price'),
-        photo_file_id=data.get('photo_file_id'),
-        latitude=data.get('latitude'),
-        longitude=data.get('longitude'),
-        location_name=data.get('location_name')
-    )
+    try:
+        ad_id = await AdModel.create(
+            user_tg_id=callback.from_user.id,
+            category=data['category'],
+            title=data['title'],
+            description=data['description'],
+            price=data.get('price'),
+            photo_file_id=data.get('photo_file_id'),
+            latitude=data.get('latitude'),
+            longitude=data.get('longitude'),
+            location_name=data.get('location_name')
+        )
+    except Exception as e:
+        print(f"Ошибка create ad: {e}")
+        await callback.message.answer(f"❌ Ошибка создания объявления: {str(e)}")
+        await state.clear()
+        await callback.answer()
+        return
 
     await state.clear()
 

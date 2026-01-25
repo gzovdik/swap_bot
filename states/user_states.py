@@ -25,11 +25,15 @@ class BrowseAdStates(StatesGroup):
     entering_message = State()
 
 
+# states/user_states.py
 class ProfileStates(StatesGroup):
     viewing_profile = State()
+    viewing_ads = State()
+    editing_menu = State()
     editing_name = State()
     editing_phone = State()
     editing_location = State()
+    in_settings = State()
 
 
 class SwapStates(StatesGroup):
