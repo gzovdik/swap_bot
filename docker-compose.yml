@@ -1,0 +1,143 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: swap_bot_db
+    environment:
+      POSTGRES_DB: swap_db
+      POSTGRES_USER: swap_user
+      POSTGRES_PASSWORD: swap_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U swap_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - swap_network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: swap_bot_redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - swap_network
+
+  # Telegram Bot
+  bot:
+    build: .
+    container_name: swap_bot
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./app:/app
+      - media_data:/app/media
+    restart: unless-stopped
+    networks:
+      - swap_network
+    command: python -m app.bot
+
+  # Celery Worker (фоновые задачи)
+  worker:
+    build: .
+    container_name: swap_bot_worker
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./app:/app
+      - media_data:/app/media
+    restart: unless-stopped
+    networks:
+      - swap_network
+    command: celery -A app.worker.tasks worker --loglevel=info
+
+  # Celery Beat (планировщик задач)
+  beat:
+    build: .
+    container_name: swap_bot_beat
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./app:/app
+    restart: unless-stopped
+    networks:
+      - swap_network
+    command: celery -A app.worker.tasks beat --loglevel=info
+
+  # Admin Panel (FastAPI)
+  admin:
+    build: .
+    container_name: swap_bot_admin
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./admin:/admin
+      - ./app:/app
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    networks:
+      - swap_network
+    command: uvicorn admin.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Nginx (опционально, для продакшена)
+  nginx:
+    image: nginx:alpine
+    container_name: swap_bot_nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - media_data:/var/www/media:ro
+    depends_on:
+      - admin
+    networks:
+      - swap_network
+    profiles:
+      - production
+
+volumes:
+  postgres_data:
+  redis_data:
+  media_data:
+
+networks:
+  swap_network:
+    driver: bridge

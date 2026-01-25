@@ -1,0 +1,71 @@
+# Core
+aiogram==3.7.0
+python-dotenv==1.0.0
+pydantic==2.7.0
+pydantic-settings==2.2.1
+
+# Database
+asyncpg==0.29.0
+aiosqlite==0.19.0
+sqlalchemy==2.0.29
+alembic==1.13.1
+
+# Cache & Queue
+redis==5.0.3
+celery==5.3.6
+celery[redis]==5.3.6
+
+# Storage
+boto3==1.34.88  # S3 поддержка
+pillow==10.3.0  # Обработка изображений
+
+# AI & ML
+openai==1.23.6  # AI рекомендации
+scikit-learn==1.4.2  # ML алгоритмы
+sentence-transformers==2.7.0  # Семантический поиск
+
+# SMS & Email
+twilio==9.0.4  # SMS верификация
+aiosmtplib==3.0.1  # Email уведомления
+
+# Парсинг
+beautifulsoup4==4.12.3
+aiohttp==3.9.5
+lxml==5.2.1
+
+# Админка
+fastapi==0.111.0
+uvicorn==0.29.0
+jinja2==3.1.3
+python-multipart==0.0.9
+
+# Безопасность
+cryptography==42.0.5
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# Аналитика
+pandas==2.2.2
+plotly==5.21.0
+
+# Геокодинг
+geopy==2.4.1
+
+# Утилиты
+python-dateutil==2.9.0
+pytz==2024.1
+
+# Логирование
+loguru==0.7.2
+
+# Тестирование
+pytest==8.1.1
+pytest-asyncio==0.23.6
+pytest-cov==5.0.0
+httpx==0.27.0  # Для тестов FastAPI
+
+# Dev tools
+black==24.4.0
+isort==5.13.2
+flake8==7.0.0
+mypy==1.10.0
