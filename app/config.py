@@ -4,7 +4,7 @@
 """
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 from pydantic_settings import BaseSettings
 from pydantic import Field
 
@@ -13,8 +13,8 @@ class Settings(BaseSettings):
     """Настройки приложения"""
 
     # Telegram
-    BOT_TOKEN: str = Field(..., env="BOT_TOKEN")
-    ADMIN_IDS: list[int] = Field(default_factory=list, env="ADMIN_IDS")
+    BOT_TOKEN: str = Field(default="", env="BOT_TOKEN")
+    ADMIN_IDS: str = Field(default="", env="ADMIN_IDS")
 
     # Database
     DATABASE_URL: str = Field(
@@ -35,12 +35,12 @@ class Settings(BaseSettings):
     S3_SECRET_KEY: Optional[str] = Field(default=None, env="S3_SECRET_KEY")
 
     # AI & ML
-    USE_AI_RECOMMENDATIONS: bool = Field(default=True, env="USE_AI_RECOMMENDATIONS")
+    USE_AI_RECOMMENDATIONS: bool = Field(default=False, env="USE_AI_RECOMMENDATIONS")
     OPENAI_API_KEY: Optional[str] = Field(default=None, env="OPENAI_API_KEY")
 
     # SMS API (для верификации)
     SMS_API_KEY: Optional[str] = Field(default=None, env="SMS_API_KEY")
-    SMS_PROVIDER: str = Field(default="twilio", env="SMS_PROVIDER")  # twilio, smsru, etc
+    SMS_PROVIDER: str = Field(default="twilio", env="SMS_PROVIDER")
 
     # Email
     SMTP_HOST: Optional[str] = Field(default=None, env="SMTP_HOST")
@@ -63,7 +63,7 @@ class Settings(BaseSettings):
 
     # Геймификация
     GAMIFICATION_ENABLED: bool = Field(default=True, env="GAMIFICATION_ENABLED")
-    REFERRAL_BONUS: int = Field(default=10, env="REFERRAL_BONUS")  # бонусные баллы
+    REFERRAL_BONUS: int = Field(default=10, env="REFERRAL_BONUS")
 
     # Модерация
     AUTO_MODERATION: bool = Field(default=True, env="AUTO_MODERATION")
@@ -74,7 +74,7 @@ class Settings(BaseSettings):
 
     # Локализация
     DEFAULT_LANGUAGE: str = Field(default="ru", env="DEFAULT_LANGUAGE")
-    SUPPORTED_LANGUAGES: list[str] = Field(
+    SUPPORTED_LANGUAGES: List[str] = Field(
         default_factory=lambda: ["ru", "en", "lv"],
         env="SUPPORTED_LANGUAGES"
     )
@@ -88,10 +88,10 @@ class Settings(BaseSettings):
 
     # Монетизация
     PREMIUM_ENABLED: bool = Field(default=True, env="PREMIUM_ENABLED")
-    PREMIUM_PRICE: int = Field(default=199, env="PREMIUM_PRICE")  # в рублях
+    PREMIUM_PRICE: int = Field(default=199, env="PREMIUM_PRICE")
     AD_BOOST_PRICE: int = Field(default=49, env="AD_BOOST_PRICE")
 
-    # GitHub (для помощи проекту)
+    # GitHub
     GITHUB_REPO: str = Field(
         default="https://github.com/yourusername/swap_bot",
         env="GITHUB_REPO"
@@ -112,11 +112,12 @@ class Settings(BaseSettings):
     LOG_FILE: Optional[Path] = Field(default=None, env="LOG_FILE")
 
     class Config:
-        env_file = str(Path(__file__).resolve().parent.parent / ".env")
+        env_file = ".env"
         env_file_encoding = "utf-8"
+        # Не падать если .env не найден
+        extra = "ignore"
 
 
-# Константы
 class Constants:
     """Бизнес-константы"""
 
@@ -191,60 +192,18 @@ class Constants:
     SWAP_STATUS_MEETING_SCHEDULED = "meeting_scheduled"
     SWAP_STATUS_COMPLETED = "completed"
     SWAP_STATUS_CANCELLED = "cancelled"
+    SWAP_STATUS_PENDING = "pending"
 
-    # Уровни пользователей (геймификация)
-    USER_LEVELS = {
-        1: {"name_ru": "Новичок", "name_en": "Beginner", "swaps_required": 0, "perks": []},
-        2: {"name_ru": "Обменщик", "name_en": "Swapper", "swaps_required": 3, "perks": ["free_boost"]},
-        3: {"name_ru": "Профи", "name_en": "Pro", "swaps_required": 10, "perks": ["free_boost", "priority_search"]},
-        4: {"name_ru": "Эксперт", "name_en": "Expert", "swaps_required": 25,
-            "perks": ["free_boost", "priority_search", "verified_badge"]},
-        5: {"name_ru": "Мастер", "name_en": "Master", "swaps_required": 50, "perks": ["all_premium_features"]},
-    }
-
-    # Достижения
-    ACHIEVEMENTS = {
-        "first_swap": {"name_ru": "Первый обмен", "name_en": "First Swap", "emoji": "🎉", "points": 10},
-        "10_swaps": {"name_ru": "10 обменов", "name_en": "10 Swaps", "emoji": "🔥", "points": 50},
-        "100_views": {"name_ru": "100 просмотров", "name_en": "100 Views", "emoji": "👁", "points": 25},
-        "verified": {"name_ru": "Верифицирован", "name_en": "Verified", "emoji": "✅", "points": 30},
-        "helpful": {"name_ru": "Полезный", "name_en": "Helpful", "emoji": "💚", "points": 20},
-    }
-
-    # Радиус поиска
-    SEARCH_RADIUS_OPTIONS = [1, 3, 5, 10, 25, 50, 100]
-
-    # Сообщения
-    MESSAGES = {
-        "ru": {
-            "welcome": "👋 Добро пожаловать в SwapBot!",
-            "ad_created": "✅ Объявление создано!",
-            "swap_proposed": "✅ Предложение обмена отправлено!",
-            "error": "❌ Произошла ошибка",
-            "no_ads": "😔 Больше нет объявлений",
-        },
-        "en": {
-            "welcome": "👋 Welcome to SwapBot!",
-            "ad_created": "✅ Ad created!",
-            "swap_proposed": "✅ Swap proposal sent!",
-            "error": "❌ An error occurred",
-            "no_ads": "😔 No more ads",
-        },
-        "lv": {
-            "welcome": "👋 Laipni lūdzam SwapBot!",
-            "ad_created": "✅ Sludinājums izveidots!",
-            "swap_proposed": "✅ Maiņas piedāvājums nosūtīts!",
-            "error": "❌ Radās kļūda",
-            "no_ads": "😔 Nav vairāk sludinājumu",
-        }
-    }
-
-    # Для handlers/keyboards: плоские ключи и "title"
+    # Лимиты
     MAX_TEXT_LEN = 1000
     MAX_NAME_LEN = 100
     MAX_TITLE_LEN = 150
     MAX_DESC_LEN = 500
-    SWAP_STATUS_PENDING = "pending"
+
+    # Сообщения
+    MESSAGES = {}
+    CATEGORY_BUTTONS = {}
+    TEXT_TO_CATEGORY = {}
 
     @classmethod
     def _categories_for_bot(cls):
@@ -259,14 +218,13 @@ class Constants:
 
     @classmethod
     def _messages_for_bot(cls):
-        ru = cls.MESSAGES["ru"]
         return {
             "welcome": "👋 <b>Добро пожаловать в SwapBot!</b>\n\n🔄 Площадка для обмена вещами.\n📍 Укажите местоположение для поиска рядом с вами.",
             "location_saved": "✅ Местоположение сохранено!",
-            "ad_created": ru["ad_created"],
-            "no_ads_found": ru["no_ads"],
-            "swap_sent": ru["swap_proposed"],
-            "error": ru["error"],
+            "ad_created": "✅ Объявление создано!",
+            "no_ads_found": "😔 Больше нет объявлений",
+            "swap_sent": "✅ Предложение обмена отправлено!",
+            "error": "❌ Произошла ошибка",
         }
 
 
@@ -282,6 +240,7 @@ constants.TEXT_TO_CATEGORY = {v["title"]: k for k, v in constants.CATEGORIES.ite
 
 
 def get_db_path() -> str:
+    """Получение пути к БД"""
     p = settings.DB_PATH
     if p.startswith("/") or ":" in p:
         return p
@@ -289,26 +248,16 @@ def get_db_path() -> str:
     return str(root / p)
 
 
-# Проверка обязательных настроек
-def validate_settings():
-    """Проверка критичных настроек"""
-    if not settings.BOT_TOKEN:
-        raise ValueError("BOT_TOKEN is required!")
-
-    if settings.PREMIUM_ENABLED and not settings.PAYMENT_PROVIDER_TOKEN:
-        print("⚠️  WARNING: Premium enabled but PAYMENT_PROVIDER_TOKEN not set")
-
-    if settings.USE_AI_RECOMMENDATIONS and not settings.OPENAI_API_KEY:
-        print("⚠️  WARNING: AI recommendations enabled but OPENAI_API_KEY not set")
-
-    if settings.AVITO_PARSER_ENABLED and not settings.AVITO_API_KEY:
-        print("⚠️  WARNING: Avito parser enabled but AVITO_API_KEY not set")
-
-    # Создаём директории
-    settings.MEDIA_PATH.mkdir(exist_ok=True)
-
-    print("✅ Configuration validated successfully")
+# Парсинг ADMIN_IDS
+def get_admin_ids() -> list:
+    """Парсинг списка админов из строки"""
+    if not settings.ADMIN_IDS:
+        return []
+    try:
+        return [int(x.strip()) for x in settings.ADMIN_IDS.split(",") if x.strip()]
+    except:
+        return []
 
 
-if __name__ == "__main__":
-    validate_settings()
+# Обновляем settings.ADMIN_IDS
+settings.ADMIN_IDS = get_admin_ids()
